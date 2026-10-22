@@ -23,6 +23,8 @@ struct Vehicle {
 struct Lane {
     int id;
     struct Vehicle* vehiclesOnLane;
+    int vehiclesLength;
+    int vehiclesCapacity;
 };
 struct Road {
     enum Direction direction;
