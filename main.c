@@ -27,6 +27,27 @@ void addCarToLane(struct Lane* lane, const int currentTimestamp) {
     ++currentVehicleId;
 }
 
+//not optimal, but good enough for this program
+void deleteFirstCarFromLane(struct Lane* lane) {
+    for (int i = 1; i < lane->vehiclesLength; ++i) {
+        lane->vehiclesOnLane[i-1] = lane->vehiclesOnLane[i];
+    }
+    --lane->vehiclesLength;
+}
+
+void simulateCarMovement(struct CrossroadManager* m) {
+    for (int i = 0; i < numberOfLanes; ++i) {
+        if (m->isHorizontalLightGreen) {
+            deleteFirstCarFromLane(&m->roads[north].lanes[i]);
+            deleteFirstCarFromLane(&m->roads[south].lanes[i]);
+        }
+        else {
+            deleteFirstCarFromLane(&m->roads[west].lanes[i]);
+            deleteFirstCarFromLane(&m->roads[east].lanes[i]);
+        }
+    }
+}
+
 struct CrossroadManager initializeCrossroadManager() {
     const struct Lane lane = {
         0,
@@ -58,20 +79,41 @@ void runTickOfSimulation(struct CrossroadManager* m) {
     for (int i = 0; i < maxDirections; ++i) {
         addCarToLane(&m->roads[i].lanes[0], m->currentTimestamp);
     }
+
+    simulateCarMovement(m);
+}
+
+void printRoadInfo(const enum Direction direction, const struct CrossroadManager* m) {
+    switch (direction) {
+        case north:
+            printf("North Road. Current light: ");
+            m->isHorizontalLightGreen ? printf("Green") : printf("Red");
+            break;
+        case south:
+            printf("South Road. Current light: ");
+            m->isHorizontalLightGreen ? printf("Green") : printf("Red");
+            break;
+        case west:
+            printf("West Road. Current light: ");
+            !m->isHorizontalLightGreen ? printf("Green") : printf("Red");
+            break;
+        case east:
+            printf("East Road. Current light: ");
+            !m->isHorizontalLightGreen ? printf("Green") : printf("Red");
+            break;
+        default:
+            printf("WRONG direction argument calling printRoadInfo()");
+    }
+    printf("\n");
 }
 
 void displaySimulation(const struct CrossroadManager* m) {
     printf("********************************\n");
     printf("Current timestamp: %d\n", m->currentTimestamp);
 
-    if (m->isHorizontalLightGreen)
-        printf("Current green light: North, South\n");
-    else
-        printf("Current green light: West, East\n");
-
     printf("Crossroad state:\n");
     for (int i = 0; i < maxDirections; ++i) {
-        printf("%d\n", i);
+        printRoadInfo(i, m);
         for (int j = 0; j < numberOfLanes; ++j) {
             printf("\t%d:", j);
             for (int k = 0; k < m->roads[i].lanes[j].vehiclesLength; ++k) {
