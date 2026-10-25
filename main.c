@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+
 #include "crossroadTypes.h"
 
 //Global Variables (later move to another file)
@@ -15,8 +17,9 @@ void addCarToLane(struct Lane* lane, const int currentTimestamp) {
         struct Vehicle* newVehiclesArray = realloc(lane->vehiclesOnLane,
             sizeof (struct Vehicle) * ++lane->vehiclesCapacity);
 
-        if (newVehiclesArray != nullptr)
+        if (newVehiclesArray != nullptr) {
             lane->vehiclesOnLane = newVehiclesArray;
+        }
         else
             printf("WARNING: MEMORY ERROR!");
     }
@@ -29,10 +32,12 @@ void addCarToLane(struct Lane* lane, const int currentTimestamp) {
 
 //not optimal, but good enough for this program
 void deleteFirstCarFromLane(struct Lane* lane) {
-    for (int i = 1; i < lane->vehiclesLength; ++i) {
-        lane->vehiclesOnLane[i-1] = lane->vehiclesOnLane[i];
+    if (lane->vehiclesLength > 0) {
+        for (int i = 1; i < lane->vehiclesLength; ++i) {
+            lane->vehiclesOnLane[i-1] = lane->vehiclesOnLane[i];
+        }
+        --lane->vehiclesLength;
     }
-    --lane->vehiclesLength;
 }
 
 void simulateCarMovement(struct CrossroadManager* m) {
@@ -48,22 +53,69 @@ void simulateCarMovement(struct CrossroadManager* m) {
     }
 }
 
-struct CrossroadManager initializeCrossroadManager() {
+enum Direction getDirectionFromString(char string[]) {
+    if (strcmp(string, "west") == 0)
+        return west;
+    if (strcmp(string, "east") == 0)
+        return east;
+    if (strcmp(string, "north") == 0)
+        return north;
+    if (strcmp(string, "south") == 0)
+        return south;
+
+    return maxDirections;
+}
+
+struct CrossroadManager initializeCrossroadManager(char filePath[]) {
+    int timestamp = {};
+    enum Direction direction = {};
+    if (filePath == nullptr) {
+        timestamp = 0;
+        direction = maxDirections;
+    } else {
+        FILE *f = fopen(filePath, "r");
+        if (f == nullptr) {
+            perror("YOU TRIED OPEN FILE THAT DOESN'T EXIST!\n (initializing default crossroad instead)");
+        }
+
+        char tmp[100] = {};
+        //get timestamp
+        fgets(tmp, sizeof(tmp), f);
+        timestamp = (int)strtol(tmp, nullptr, 10); //strtol is used to convert char* to int
+        if (timestamp < 0) {
+            perror("Timestamp in file should be positive! Resetting timestamp to 0!\n");
+            timestamp = 0;
+        }
+
+        char directionString[7] = {};
+        fgets(directionString, sizeof(directionString), f);
+        directionString[strcspn(directionString, "\n")] = '\0';
+
+        direction = getDirectionFromString(directionString);
+        if (direction == maxDirections) {
+            perror("Wrong direction specified in file! Allowed directions are west, east, north and south!\n");
+        }
+    }
+
     const struct Lane lane = {
         0,
         nullptr,
         0,
         0};
 
+    struct Lane carLane = lane;
+    addCarToLane(&carLane, 0);
+
     return (struct CrossroadManager){
-        .currentTimestamp = 0,
+        .currentTimestamp = timestamp,
         .isHorizontalLightGreen = true,
         .roads =
-            {{north, lane},
-            {west, lane},
-            {south, lane},
-            {east, lane}}
+            {{north, direction == north ? carLane : lane},
+            {west, direction == west ? carLane : lane},
+            {south, direction == south ? carLane : lane},
+            {east, direction == east ? carLane : lane}}
     };
+
 }
 
 void updateTrafficLights(struct CrossroadManager* m) {
@@ -74,13 +126,13 @@ void updateTrafficLights(struct CrossroadManager* m) {
 
 void runTickOfSimulation(struct CrossroadManager* m) {
     m->currentTimestamp += 1;
-    updateTrafficLights(m);
-
+    simulateCarMovement(m);
+    /*
     for (int i = 0; i < maxDirections; ++i) {
         addCarToLane(&m->roads[i].lanes[0], m->currentTimestamp);
     }
-
-    simulateCarMovement(m);
+    */
+    updateTrafficLights(m);
 }
 
 void printRoadInfo(const enum Direction direction, const struct CrossroadManager* m) {
@@ -126,8 +178,8 @@ void displaySimulation(const struct CrossroadManager* m) {
     printf("************************************\n");
 
 
-    /* Planned future map look
-
+    //Planned future map look
+/*
 constexpr int asciiNumberStart = 48;
 printf("*******************************\n"
 "* | | || |   * timestamp:%d%c   *\n"
@@ -143,15 +195,37 @@ printf("*******************************\n"
 "*   | || | | *                *\n"
 "*******************************\n",
 m->currentTimestamp / 10 == 0 ? m->currentTimestamp % 10 : m->currentTimestamp / 10,
-m->currentTimestamp / 10 != 0 ? asciiNumberStart + m->currentTimestamp % 10 : ' ',
+m->currentTimestamp / 10 != 0 ? + m->currentTimestamp % 10 : ' ',
 m->isHorizontalLightGreen ? '+' : '0',
 m->isHorizontalLightGreen ? '0' : '+',
 m->isHorizontalLightGreen ? '0' : '+',
 m->isHorizontalLightGreen ? '+' : '0');*/
 }
 
+//Made because C apparently DO NOT have a single function to clear entire buffer >:(
+int getCharacter() {
+    const int character = getchar();
+    if (character != '\n') {
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF);
+    }
+    return character;
+}
+
 int main(void) {
-    struct CrossroadManager manager = initializeCrossroadManager();
+    printf("Welcome to crossroad simulation!\n");
+    printf("Enter - start simulation\n");
+    printf("F - start simulation with file data\n");
+    const int optionCharacter = getCharacter();
+    char path[100] = {};
+
+    if (optionCharacter == 'f') {
+        printf("Enter path to file [can only be at max 99 characters long]: \n");
+        fgets(path, sizeof path, stdin);
+        path[strcspn(path, "\n")] = '\0';
+    }
+
+    struct CrossroadManager manager = initializeCrossroadManager(optionCharacter == 'f' ? path : nullptr);
 
     displaySimulation(&manager);
     while (getchar() == '\n'){
