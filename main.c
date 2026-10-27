@@ -31,24 +31,26 @@ void addCarToLane(struct Lane* lane, const int currentTimestamp) {
 }
 
 //not optimal, but good enough for this program
-void deleteFirstCarFromLane(struct Lane* lane) {
+void deleteFirstCarFromLane(struct Lane* lane, int* vehiclesCounter) {
     if (lane->vehiclesLength > 0) {
         for (int i = 1; i < lane->vehiclesLength; ++i) {
             lane->vehiclesOnLane[i-1] = lane->vehiclesOnLane[i];
         }
         --lane->vehiclesLength;
+        if (vehiclesCounter != nullptr)
+            ++(*vehiclesCounter);
     }
 }
 
 void simulateCarMovement(struct CrossroadManager* m) {
     for (int i = 0; i < numberOfLanes; ++i) {
         if (m->isHorizontalLightGreen) {
-            deleteFirstCarFromLane(&m->roads[north].lanes[i]);
-            deleteFirstCarFromLane(&m->roads[south].lanes[i]);
+            deleteFirstCarFromLane(&m->roads[north].lanes[i], &m->carCounter);
+            deleteFirstCarFromLane(&m->roads[south].lanes[i], &m->carCounter);
         }
         else {
-            deleteFirstCarFromLane(&m->roads[west].lanes[i]);
-            deleteFirstCarFromLane(&m->roads[east].lanes[i]);
+            deleteFirstCarFromLane(&m->roads[west].lanes[i], &m->carCounter);
+            deleteFirstCarFromLane(&m->roads[east].lanes[i], &m->carCounter);
         }
     }
 }
@@ -66,16 +68,29 @@ enum Direction getDirectionFromString(char string[]) {
     return maxDirections;
 }
 
+char* getStringFromDirection(const enum Direction direction) {
+    switch (direction) {
+        case west:
+            return "west";
+        case east:
+            return "east";
+        case north:
+            return "north";
+        case south:
+            return "south";
+        default:
+            return nullptr;
+    }
+}
+
 struct CrossroadManager initializeCrossroadManager(char filePath[]) {
-    int timestamp = {};
-    enum Direction direction = {};
-    if (filePath == nullptr) {
-        timestamp = 0;
-        direction = maxDirections;
-    } else {
+    int timestamp = 0;
+    enum Direction direction = maxDirections;
+    if (filePath != nullptr) {
         FILE *f = fopen(filePath, "r");
         if (f == nullptr) {
-            perror("YOU TRIED OPEN FILE THAT DOESN'T EXIST!\n (initializing default crossroad instead)");
+            perror("YOU TRIED TO OPEN FILE THAT DOESN'T EXIST!\nInitializing default crossroad instead\n");
+            initializeCrossroadManager(nullptr);
         }
 
         char tmp[100] = {};
@@ -127,11 +142,11 @@ void updateTrafficLights(struct CrossroadManager* m) {
 void runTickOfSimulation(struct CrossroadManager* m) {
     m->currentTimestamp += 1;
     simulateCarMovement(m);
-    /*
+
     for (int i = 0; i < maxDirections; ++i) {
         addCarToLane(&m->roads[i].lanes[0], m->currentTimestamp);
     }
-    */
+
     updateTrafficLights(m);
 }
 
@@ -159,6 +174,16 @@ void printRoadInfo(const enum Direction direction, const struct CrossroadManager
     printf("\n");
 }
 
+char* getNumberEndString(const int number) {
+    if (number % 10 == 1)
+        return "st";
+    if (number % 10 == 2)
+        return "nd";
+    if (number % 10 == 3)
+        return "rd";
+    return "st";
+}
+
 void displaySimulation(const struct CrossroadManager* m) {
     printf("********************************\n");
     printf("Current timestamp: %d\n", m->currentTimestamp);
@@ -167,15 +192,20 @@ void displaySimulation(const struct CrossroadManager* m) {
     for (int i = 0; i < maxDirections; ++i) {
         printRoadInfo(i, m);
         for (int j = 0; j < numberOfLanes; ++j) {
-            printf("\t%d:", j);
+            printf("\t%d%s lane: %d cars [",
+                j + 1,
+                getNumberEndString(j+1),
+                m->roads[i].lanes[j].vehiclesLength);
+
             for (int k = 0; k < m->roads[i].lanes[j].vehiclesLength; ++k) {
-                printf(" car %d;", m->roads[i].lanes[j].vehiclesOnLane[k].id);
+                printf(k == 0 ? "%d" : ", %d", m->roads[i].lanes[j].vehiclesOnLane[k].id);
             }
-            printf("\n");
+            printf("]\n");
         }
     }
 
     printf("************************************\n");
+    printf("Press Enter to continue, press any other key to end.\n");
 
 
     //Planned future map look
@@ -200,6 +230,19 @@ m->isHorizontalLightGreen ? '+' : '0',
 m->isHorizontalLightGreen ? '0' : '+',
 m->isHorizontalLightGreen ? '0' : '+',
 m->isHorizontalLightGreen ? '+' : '0');*/
+}
+
+void displaySummary(const struct CrossroadManager *m) {
+    printf("Total amount of cars driven through crossroad: %d\n", m->carCounter);
+    for (int i = 0; i < maxDirections; ++i) {
+        for (int j = 0; j < numberOfLanes; ++j) {
+            printf("%d%s %s road had %d car(s)\n",
+                j+1,
+                getNumberEndString(j+1),
+                getStringFromDirection(i),
+                m->roads[i].lanes[j].vehiclesLength);
+        }
+    }
 }
 
 //Made because C apparently DO NOT have a single function to clear entire buffer >:(
@@ -232,6 +275,8 @@ int main(void) {
         runTickOfSimulation(&manager);
         displaySimulation(&manager);
     }
+
+    displaySummary(&manager);
 
     return 0;
 }

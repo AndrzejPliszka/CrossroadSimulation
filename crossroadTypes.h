@@ -34,6 +34,7 @@ struct Road {
 struct CrossroadManager {
     int currentTimestamp;
     bool isHorizontalLightGreen;
+    int carCounter;
     struct Road roads[4];
 };
 
