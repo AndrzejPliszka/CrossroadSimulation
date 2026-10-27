@@ -1,12 +1,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "crossroadTypes.h"
 
 //Global Variables (later move to another file)
 constexpr int trafficLightChangeCooldown = 3;
-constexpr int numberOfLanes = 1;
+constexpr int numberOfLanes = 2;
 
 void addCarToLane(struct Lane* lane, const int currentTimestamp) {
     static int currentVehicleId = 0;
@@ -121,14 +122,24 @@ struct CrossroadManager initializeCrossroadManager(char filePath[]) {
     struct Lane carLane = lane;
     addCarToLane(&carLane, 0);
 
+    struct Road roads[4];
+    for (int i = 0; i < 4; ++i) {
+        const struct Road road = {
+            .direction = i,
+            .lanes = malloc(sizeof(struct Lane) * numberOfLanes)
+        };
+
+        for (int laneIndex = 0; laneIndex < numberOfLanes; ++laneIndex) {
+            road.lanes[laneIndex] = direction == i ? carLane : lane;
+        }
+
+        roads[i] = road;
+    }
+
     return (struct CrossroadManager){
         .currentTimestamp = timestamp,
         .isHorizontalLightGreen = true,
-        .roads =
-            {{north, direction == north ? carLane : lane},
-            {west, direction == west ? carLane : lane},
-            {south, direction == south ? carLane : lane},
-            {east, direction == east ? carLane : lane}}
+        .roads = {roads[0], roads[1], roads[2], roads[3]},
     };
 
 }

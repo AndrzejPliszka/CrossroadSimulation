@@ -28,7 +28,7 @@ struct Lane {
 };
 struct Road {
     enum Direction direction;
-    struct Lane lanes[1];
+    struct Lane* lanes;
 };
 
 struct CrossroadManager {
