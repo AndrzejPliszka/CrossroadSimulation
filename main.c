@@ -6,11 +6,10 @@
 #include "crossroadTypes.h"
 
 //Global Variables (later move to another file)
-constexpr int trafficLightChangeCooldown = 3;
-constexpr int numberOfLanes = 2;
+constexpr int trafficLightChangeCooldown = 10;
+constexpr int numberOfLanes = 4;
 
-void addCarToLane(struct Lane* lane, const int currentTimestamp) {
-    static int currentVehicleId = 0;
+void addCarToLane(struct Lane* lane, const struct Vehicle* car) {
     if (lane->vehiclesOnLane == nullptr) {
         lane->vehiclesOnLane = (struct Vehicle*)malloc(sizeof (struct Vehicle) * ++lane->vehiclesCapacity);
     }
@@ -22,38 +21,89 @@ void addCarToLane(struct Lane* lane, const int currentTimestamp) {
             lane->vehiclesOnLane = newVehiclesArray;
         }
         else
-            printf("WARNING: MEMORY ERROR!");
+            fprintf(stderr, "WARNING: MEMORY ERROR!");
     }
-    lane->vehiclesOnLane[lane->vehiclesLength++] = (struct Vehicle){
-        currentVehicleId,
-        currentTimestamp,
-    };
+    lane->vehiclesOnLane[lane->vehiclesLength++] = *car;
+}
+
+void spawnCarOnLane(struct Lane* lane, const int currentTimestamp) {
+    static int currentVehicleId = 0;
+    const struct Vehicle car = {currentVehicleId, currentTimestamp};
+    addCarToLane(lane, &car);
     ++currentVehicleId;
 }
 
-//not optimal, but good enough for this program
-void deleteFirstCarFromLane(struct Lane* lane, int* vehiclesCounter) {
-    if (lane->vehiclesLength > 0) {
-        for (int i = 1; i < lane->vehiclesLength; ++i) {
-            lane->vehiclesOnLane[i-1] = lane->vehiclesOnLane[i];
+struct Vehicle deleteNthCarFromLane(struct Lane* lane, int* vehiclesCounter, const int n) {
+    if (n < 0 || lane->vehiclesLength <= n) {
+        fprintf(stderr, "INVALID n VALUE!! returning wrong object!!!");
+        return (struct Vehicle){-1, -1};
+    }
+    struct Vehicle deletedVehicle = {};
+    for (int i = n; i < lane->vehiclesLength; ++i) {
+        if (i == n)
+            deletedVehicle = lane->vehiclesOnLane[i];
+        lane->vehiclesOnLane[i] = lane->vehiclesOnLane[i+1];
+    }
+    --lane->vehiclesLength;
+    if (vehiclesCounter != nullptr && n == 0) //if n == 0, it means that car has driven through crossroad
+        ++(*vehiclesCounter);
+
+    return deletedVehicle;
+}
+
+void deleteCarsFromLanes(struct CrossroadManager* m) {
+    for (int i = 0; i < numberOfLanes; ++i) {
+        if (m->isHorizontalLightGreen) {
+            if (m->roads[north].lanes[i].vehiclesLength > 0)
+                deleteNthCarFromLane(&m->roads[north].lanes[i], &m->carCounter, 0);
+            if (m->roads[south].lanes[i].vehiclesLength > 0)
+                deleteNthCarFromLane(&m->roads[south].lanes[i], &m->carCounter, 0);
         }
-        --lane->vehiclesLength;
-        if (vehiclesCounter != nullptr)
-            ++(*vehiclesCounter);
+        else {
+            if (m->roads[west].lanes[i].vehiclesLength > 0)
+                deleteNthCarFromLane(&m->roads[west].lanes[i], &m->carCounter, 0);
+            if (m->roads[east].lanes[i].vehiclesLength > 0)
+                deleteNthCarFromLane(&m->roads[east].lanes[i], &m->carCounter, 0);
+        }
+    }
+}
+
+void moveCarsToAvailableLanes(struct CrossroadManager* m) {
+    for (int i = 0; i < maxDirections; ++i) {
+        for (int j = 0; j < numberOfLanes; ++j) {
+            if (j > 0) {
+                const int currentLaneLength = m->roads[i].lanes[j].vehiclesLength;
+                const int leftLaneLength = m->roads[i].lanes[j-1].vehiclesLength;
+                const int carDifference = currentLaneLength - leftLaneLength;
+                if (carDifference >= 2) {
+                    struct Vehicle movedCar = deleteNthCarFromLane(
+                        &m->roads[i].lanes[j],
+                        nullptr,
+                        leftLaneLength +1);
+                    addCarToLane(&m->roads[i].lanes[j-1], &movedCar);
+                }
+            }
+
+            if (j < numberOfLanes - 1) {
+                const int currentLaneLength = m->roads[i].lanes[j].vehiclesLength;
+                const int rightLaneLength = m->roads[i].lanes[j+1].vehiclesLength;
+                const int carDifference = currentLaneLength - rightLaneLength;
+                if (carDifference >= 2) {
+                    struct Vehicle movedCar = deleteNthCarFromLane(
+                        &m->roads[i].lanes[j],
+                        nullptr,
+                        rightLaneLength +1);
+                    addCarToLane(&m->roads[i].lanes[j+1], &movedCar);
+                }
+            }
+        }
     }
 }
 
 void simulateCarMovement(struct CrossroadManager* m) {
-    for (int i = 0; i < numberOfLanes; ++i) {
-        if (m->isHorizontalLightGreen) {
-            deleteFirstCarFromLane(&m->roads[north].lanes[i], &m->carCounter);
-            deleteFirstCarFromLane(&m->roads[south].lanes[i], &m->carCounter);
-        }
-        else {
-            deleteFirstCarFromLane(&m->roads[west].lanes[i], &m->carCounter);
-            deleteFirstCarFromLane(&m->roads[east].lanes[i], &m->carCounter);
-        }
-    }
+    deleteCarsFromLanes(m);
+    if (numberOfLanes > 1)
+        moveCarsToAvailableLanes(m);
 }
 
 enum Direction getDirectionFromString(char string[]) {
@@ -120,7 +170,7 @@ struct CrossroadManager initializeCrossroadManager(char filePath[]) {
         0};
 
     struct Lane carLane = lane;
-    addCarToLane(&carLane, 0);
+    spawnCarOnLane(&carLane, 0);
 
     struct Road roads[4];
     for (int i = 0; i < 4; ++i) {
@@ -155,7 +205,7 @@ void runTickOfSimulation(struct CrossroadManager* m) {
     simulateCarMovement(m);
 
     for (int i = 0; i < maxDirections; ++i) {
-        addCarToLane(&m->roads[i].lanes[0], m->currentTimestamp);
+        spawnCarOnLane(&m->roads[i].lanes[0], m->currentTimestamp);
     }
 
     updateTrafficLights(m);
