@@ -1,110 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
+#include <assert.h>
 
+#include "globalVariables.h"
 #include "crossroadTypes.h"
-
-//Global Variables (later move to another file)
-constexpr int trafficLightChangeCooldown = 10;
-constexpr int numberOfLanes = 4;
-
-void addCarToLane(struct Lane* lane, const struct Vehicle* car) {
-    if (lane->vehiclesOnLane == nullptr) {
-        lane->vehiclesOnLane = (struct Vehicle*)malloc(sizeof (struct Vehicle) * ++lane->vehiclesCapacity);
-    }
-    else if (lane->vehiclesCapacity - lane->vehiclesLength == 0) {
-        struct Vehicle* newVehiclesArray = realloc(lane->vehiclesOnLane,
-            sizeof (struct Vehicle) * ++lane->vehiclesCapacity);
-
-        if (newVehiclesArray != nullptr) {
-            lane->vehiclesOnLane = newVehiclesArray;
-        }
-        else
-            fprintf(stderr, "WARNING: MEMORY ERROR!");
-    }
-    lane->vehiclesOnLane[lane->vehiclesLength++] = *car;
-}
-
-void spawnCarOnLane(struct Lane* lane, const int currentTimestamp) {
-    static int currentVehicleId = 0;
-    const struct Vehicle car = {currentVehicleId, currentTimestamp};
-    addCarToLane(lane, &car);
-    ++currentVehicleId;
-}
-
-struct Vehicle deleteNthCarFromLane(struct Lane* lane, int* vehiclesCounter, const int n) {
-    if (n < 0 || lane->vehiclesLength <= n) {
-        fprintf(stderr, "INVALID n VALUE!! returning wrong object!!!");
-        return (struct Vehicle){-1, -1};
-    }
-    struct Vehicle deletedVehicle = {};
-    for (int i = n; i < lane->vehiclesLength; ++i) {
-        if (i == n)
-            deletedVehicle = lane->vehiclesOnLane[i];
-        lane->vehiclesOnLane[i] = lane->vehiclesOnLane[i+1];
-    }
-    --lane->vehiclesLength;
-    if (vehiclesCounter != nullptr && n == 0) //if n == 0, it means that car has driven through crossroad
-        ++(*vehiclesCounter);
-
-    return deletedVehicle;
-}
-
-void deleteCarsFromLanes(struct CrossroadManager* m) {
-    for (int i = 0; i < numberOfLanes; ++i) {
-        if (m->isHorizontalLightGreen) {
-            if (m->roads[north].lanes[i].vehiclesLength > 0)
-                deleteNthCarFromLane(&m->roads[north].lanes[i], &m->carCounter, 0);
-            if (m->roads[south].lanes[i].vehiclesLength > 0)
-                deleteNthCarFromLane(&m->roads[south].lanes[i], &m->carCounter, 0);
-        }
-        else {
-            if (m->roads[west].lanes[i].vehiclesLength > 0)
-                deleteNthCarFromLane(&m->roads[west].lanes[i], &m->carCounter, 0);
-            if (m->roads[east].lanes[i].vehiclesLength > 0)
-                deleteNthCarFromLane(&m->roads[east].lanes[i], &m->carCounter, 0);
-        }
-    }
-}
-
-void moveCarsToAvailableLanes(struct CrossroadManager* m) {
-    for (int i = 0; i < maxDirections; ++i) {
-        for (int j = 0; j < numberOfLanes; ++j) {
-            if (j > 0) {
-                const int currentLaneLength = m->roads[i].lanes[j].vehiclesLength;
-                const int leftLaneLength = m->roads[i].lanes[j-1].vehiclesLength;
-                const int carDifference = currentLaneLength - leftLaneLength;
-                if (carDifference >= 2) {
-                    struct Vehicle movedCar = deleteNthCarFromLane(
-                        &m->roads[i].lanes[j],
-                        nullptr,
-                        leftLaneLength +1);
-                    addCarToLane(&m->roads[i].lanes[j-1], &movedCar);
-                }
-            }
-
-            if (j < numberOfLanes - 1) {
-                const int currentLaneLength = m->roads[i].lanes[j].vehiclesLength;
-                const int rightLaneLength = m->roads[i].lanes[j+1].vehiclesLength;
-                const int carDifference = currentLaneLength - rightLaneLength;
-                if (carDifference >= 2) {
-                    struct Vehicle movedCar = deleteNthCarFromLane(
-                        &m->roads[i].lanes[j],
-                        nullptr,
-                        rightLaneLength +1);
-                    addCarToLane(&m->roads[i].lanes[j+1], &movedCar);
-                }
-            }
-        }
-    }
-}
-
-void simulateCarMovement(struct CrossroadManager* m) {
-    deleteCarsFromLanes(m);
-    if (numberOfLanes > 1)
-        moveCarsToAvailableLanes(m);
-}
+#include "carManagment.h"
 
 enum Direction getDirectionFromString(char string[]) {
     if (strcmp(string, "west") == 0)
@@ -134,14 +35,17 @@ char* getStringFromDirection(const enum Direction direction) {
     }
 }
 
-struct CrossroadManager initializeCrossroadManager(char filePath[]) {
+struct CrossroadManager initializeCrossroadManager(char filePath[], double carSpawnRates[]) {
+    if (carSpawnRates == nullptr)
+        perror("You didn't specify carSpawnRates! (give double Array of length of Direction::maxDirections");
+
     int timestamp = 0;
     enum Direction direction = maxDirections;
     if (filePath != nullptr) {
         FILE *f = fopen(filePath, "r");
         if (f == nullptr) {
             perror("YOU TRIED TO OPEN FILE THAT DOESN'T EXIST!\nInitializing default crossroad instead\n");
-            initializeCrossroadManager(nullptr);
+            initializeCrossroadManager(nullptr, carSpawnRates);
         }
 
         char tmp[100] = {};
@@ -170,14 +74,18 @@ struct CrossroadManager initializeCrossroadManager(char filePath[]) {
         0};
 
     struct Lane carLane = lane;
-    spawnCarOnLane(&carLane, 0);
+    addNewCarToLane(&carLane, 0);
 
     struct Road roads[4];
     for (int i = 0; i < 4; ++i) {
         const struct Road road = {
             .direction = i,
-            .lanes = malloc(sizeof(struct Lane) * numberOfLanes)
+            .lanes = malloc(sizeof(struct Lane) * numberOfLanes),
+            .carSpawnProbability = carSpawnRates[i],
         };
+
+        assert(road.carSpawnProbability <= 1 && road.carSpawnProbability >= 0
+            && "carSpawnProbability needs to be between 0 and 1");
 
         for (int laneIndex = 0; laneIndex < numberOfLanes; ++laneIndex) {
             road.lanes[laneIndex] = direction == i ? carLane : lane;
@@ -203,11 +111,7 @@ void updateTrafficLights(struct CrossroadManager* m) {
 void runTickOfSimulation(struct CrossroadManager* m) {
     m->currentTimestamp += 1;
     simulateCarMovement(m);
-
-    for (int i = 0; i < maxDirections; ++i) {
-        spawnCarOnLane(&m->roads[i].lanes[0], m->currentTimestamp);
-    }
-
+    spawnNewCars(m);
     updateTrafficLights(m);
 }
 
@@ -317,19 +221,36 @@ int getCharacter() {
 }
 
 int main(void) {
+    char input[100] = {};
     printf("Welcome to crossroad simulation!\n");
+
+    printf("Enter seed of the generator: ");
+    //TODO: Add Validation!
+    fgets(input, sizeof input, stdin);
+    const long seed = strtol(input, nullptr, 10);
+    srand(seed);
+
+    double carSpawnRates[maxDirections] = {};
+    for (int i = 0; i < maxDirections; ++i) {
+        printf("Enter probability for %s road: ", getStringFromDirection(i));
+        fgets(input, sizeof input, stdin);
+
+        //TODO: Add Validation and move to function!
+        carSpawnRates[i] = strtof(input, nullptr);
+    }
+
     printf("Enter - start simulation\n");
     printf("F - start simulation with file data\n");
     const int optionCharacter = getCharacter();
-    char path[100] = {};
 
     if (optionCharacter == 'f') {
         printf("Enter path to file [can only be at max 99 characters long]: \n");
-        fgets(path, sizeof path, stdin);
-        path[strcspn(path, "\n")] = '\0';
+        fgets(input, sizeof input, stdin);
+        input[strcspn(input, "\n")] = '\0';
     }
 
-    struct CrossroadManager manager = initializeCrossroadManager(optionCharacter == 'f' ? path : nullptr);
+    struct CrossroadManager manager =
+        initializeCrossroadManager(optionCharacter == 'f' ? input : nullptr, carSpawnRates);
 
     displaySimulation(&manager);
     while (getchar() == '\n'){

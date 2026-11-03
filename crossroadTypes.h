@@ -29,6 +29,7 @@ struct Lane {
 struct Road {
     enum Direction direction;
     struct Lane* lanes;
+    double carSpawnProbability;
 };
 
 struct CrossroadManager {

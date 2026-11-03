@@ -1,0 +1,7 @@
+#ifndef CROSSROADSIMULATION_GLOBALVARIABLES_H
+#define CROSSROADSIMULATION_GLOBALVARIABLES_H
+
+constexpr int trafficLightChangeCooldown = 10;
+constexpr int numberOfLanes = 4;
+
+#endif //CROSSROADSIMULATION_GLOBALVARIABLES_H
